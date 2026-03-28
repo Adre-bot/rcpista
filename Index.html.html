@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>RC Pista — Control de Tiempo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    :root {
+      --bg:          #0d0f14;
+      --surface:     #161921;
+      --surface2:    #1e2230;
+      --border:      #2a2f42;
+      --accent:      #f0c040;
+      --accent2:     #e07820;
+      --green:       #30c878;
+      --red:         #f03050;
+      --blue:        #4090f0;
+      --purple:      #a060f0;
+      --text:        #e8eaf2;
+      --muted:       #6870a0;
+      --radius:      16px;
+      --radius-sm:   10px;
+      --font-mono:   'Courier New', Courier, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 0 0 80px;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 16px 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 24px rgba(0,0,0,.5);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 28px; line-height: 1; filter: drop-shadow(0 0 8px var(--accent)); }
+    .logo-text { font-size: 20px; font-weight: 700; letter-spacing: .04em; color: var(--accent); text-shadow: 0 0 16px rgba(240,192,64,.4); }
+    .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; display: block; margin-top: -2px; }
+
+    .header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .btn-header {
+      display: flex; align-items: center; gap: 8px;
+      border: none; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 700; padding: 10px 14px;
+      cursor: pointer; letter-spacing: .04em;
+      transition: opacity .15s, transform .1s, box-shadow .15s;
+    }
+    .btn-header:active { transform: scale(.96); }
+
+    #btn-add-car {
+      background: var(--accent); color: #111;
+      box-shadow: 0 0 16px rgba(240,192,64,.25);
+    }
+    #btn-add-car:hover { opacity: .9; box-shadow: 0 0 24px rgba(240,192,64,.45); }
+
+    #btn-history {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    #btn-history:hover { border-color: var(--purple); color: var(--purple); }
+
+    /* ===== FOTO ===== */
+    .car-photo-wrap {
+      position: relative; width: 100%; height: 160px;
+      background: #0a0c11; overflow: hidden; cursor: pointer;
+    }
+    .car-photo-wrap img {
+      width: 100%; height: 100%; object-fit: contain;
+      object-position: center; display: block; transition: opacity .3s; padding: 4px;
+    }
+    .car-photo-placeholder {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+      color: var(--muted); font-size: 13px; font-weight: 600;
+      letter-spacing: .04em; pointer-events: none;
+    }
+    .car-photo-placeholder .ph-icon { font-size: 32px; }
+    .car-photo-wrap:hover .car-photo-placeholder { color: var(--accent); }
+    .car-photo-input { display: none; }
+    .car-photo-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity .2s; font-size: 13px;
+      font-weight: 700; color: #fff; gap: 6px;
+    }
+    .car-photo-wrap:hover .car-photo-overlay { opacity: 1; }
+
+    /* ===== BANNER DE CLIENTE ACTIVO ===== */
+    .active-client-banner {
+      display: none;
+      padding: 8px 16px;
+      background: rgba(48,200,120,.08);
+      border-bottom: 1px solid rgba(48,200,120,.2);
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 600;
+      letter-spacing: .04em;
+      gap: 6px;
+      align-items: center;
+    }
+    .active-client-banner.visible { display: flex; }
+
+    /* ===== GRID ===== */
+    #cars-container {
+      padding: 20px 14px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    #empty-state { text-align: center; padding: 60px 24px; color: var(--muted); display: none; }
+    #empty-state .empty-icon { font-size: 56px; margin-bottom: 12px; }
+    #empty-state p { font-size: 16px; line-height: 1.6; }
+
+    /* ===== TARJETA ===== */
+    .car-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      transition: border-color .3s, box-shadow .3s; position: relative;
+    }
+    .car-card.state-idle    { border-top: 3px solid var(--border); }
+    .car-card.state-running { border-top: 3px solid var(--green);  box-shadow: 0 0 20px rgba(48,200,120,.15); }
+    .car-card.state-paused  { border-top: 3px solid var(--accent); box-shadow: 0 0 20px rgba(240,192,64,.1); }
+    .car-card.state-ended   { border-top: 3px solid var(--red);    box-shadow: 0 0 20px rgba(240,48,80,.2); }
+
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px;
+    }
+    .car-name-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .car-name { font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .btn-rename { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 4px; flex-shrink: 0; transition: color .15s; }
+    .btn-rename:hover { color: var(--accent); }
+    .btn-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px 6px; transition: color .15s; }
+    .btn-remove:hover { color: var(--red); }
+
+    /* ===== CLIENTE ACTIVO EN TARJETA ===== */
+    .card-client-info {
+      display: none;
+      margin: 0 16px 10px;
+      padding: 8px 12px;
+      background: rgba(48,200,120,.06);
+      border: 1px solid rgba(48,200,120,.2);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 600;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-client-info.visible { display: flex; }
+    .card-client-info .client-name { flex: 1; }
+    .card-client-info .client-start { color: var(--muted); font-weight: 400; }
+
+    /* ===== SELECTOR DE TIEMPO ===== */
+    .time-selector { display: flex; gap: 6px; padding: 0 16px 12px; flex-wrap: wrap; }
+    .time-selector label { font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; width: 100%; margin-bottom: 2px; }
+    .time-opt {
+      flex: 1; min-width: 56px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: 13px; font-weight: 600;
+      padding: 8px 4px; cursor: pointer; text-align: center;
+      transition: background .15s, border-color .15s, color .15s;
+      -webkit-appearance: none; appearance: none;
+    }
+    .time-opt.selected { background: var(--accent); color: #111; border-color: var(--accent); }
+
+    /* ===== TIMER ===== */
+    .timer-display { text-align: center; padding: 10px 16px 14px; }
+    .timer-digits {
+      font-family: var(--font-mono); font-size: 64px; font-weight: 700;
+      letter-spacing: .04em; line-height: 1; color: var(--text);
+      text-shadow: 0 0 20px rgba(232,234,242,.15); transition: color .3s;
+    }
+    .state-running .timer-digits { color: var(--green);  text-shadow: 0 0 24px rgba(48,200,120,.4); }
+    .state-paused  .timer-digits { color: var(--accent); text-shadow: 0 0 24px rgba(240,192,64,.3); }
+    .state-ended   .timer-digits { color: var(--red);    text-shadow: 0 0 24px rgba(240,48,80,.4); }
+
+    .last-minute .timer-digits {
+      color: var(--red) !important;
+      text-shadow: 0 0 30px rgba(240,48,80,.7) !important;
+      animation: pulse-red 0.6s ease-in-out infinite !important;
+    }
+    @keyframes pulse-red { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: .85; } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+    .state-ended .timer-digits { animation: blink 1s ease-in-out infinite; }
+
+    .progress-bar-wrap { height: 4px; background: var(--surface2); margin: 0 16px 14px; border-radius: 99px; overflow: hidden; }
+    .progress-bar { height: 100%; border-radius: 99px; background: var(--green); transition: width .5s linear, background .3s; width: 100%; }
+    .state-paused  .progress-bar { background: var(--accent); }
+    .state-ended   .progress-bar { background: var(--red); width: 0% !important; }
+
+    /* ===== CONTROLES ===== */
+    .card-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 16px; }
+    .btn-ctrl {
+      border: none; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700;
+      padding: 14px 10px; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px; transition: opacity .15s, transform .1s, box-shadow .15s;
+      letter-spacing: .02em;
+    }
+    .btn-ctrl:active { transform: scale(.96); }
+    .btn-ctrl:disabled { opacity: .3; cursor: not-allowed; transform: none !important; }
+    .btn-start  { background: var(--green);    color: #0a1a10; }
+    .btn-pause  { background: var(--accent);   color: #1a1400; }
+    .btn-extra  { background: var(--blue);     color: #0a1020; }
+    .btn-reset  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+    .btn-start:not(:disabled):hover  { box-shadow: 0 0 16px rgba(48,200,120,.4); }
+    .btn-pause:not(:disabled):hover  { box-shadow: 0 0 16px rgba(240,192,64,.4); }
+    .btn-extra:not(:disabled):hover  { box-shadow: 0 0 16px rgba(64,144,240,.4); }
+    .btn-reset:not(:disabled):hover  { color: var(--text); border-color: var(--muted); }
+
+    .status-badge { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; }
+    .state-idle    .status-badge { color: var(--muted); }
+    .state-running .status-badge { color: var(--green); }
+    .state-paused  .status-badge { color: var(--accent); }
+    .state-ended   .status-badge { color: var(--red); }
+
+    /* ===== MODAL BASE ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.75);
+      display: none; align-items: center; justify-content: center;
+      z-index: 200; backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px 24px;
+      width: 90%; max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    }
+    .modal-box h2 { font-size: 18px; margin-bottom: 6px; }
+    .modal-box .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label { font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+    .modal-input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: 16px;
+      padding: 12px 14px; outline: none; transition: border-color .2s;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-actions button { flex: 1; padding: 12px; border: none; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+    .modal-confirm { background: var(--accent); color: #111; }
+    .modal-cancel  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+    .modal-confirm:hover { opacity: .9; }
+    .modal-cancel:hover  { color: var(--text); }
+
+    /* ===== MODAL RENAME ===== */
+    #modal-rename { border-top: 3px solid var(--accent); }
+    #modal-rename h2 { color: var(--accent); }
+
+    /* ===== MODAL CLIENTE ===== */
+    #modal-client-box { border-top: 3px solid var(--green); }
+    #modal-client-box h2 { color: var(--green); }
+
+    /* ===== PANEL DE HISTORIAL ===== */
+    #history-panel {
+      position: fixed; inset: 0; background: rgba(0,0,0,.8);
+      z-index: 300; backdrop-filter: blur(6px);
+      display: none; flex-direction: column;
+    }
+    #history-panel.open { display: flex; }
+
+    .history-header {
+      background: var(--surface); border-bottom: 2px solid var(--purple);
+      padding: 18px 20px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    .history-header h2 { font-size: 20px; color: var(--purple); display: flex; align-items: center; gap: 10px; }
+    .history-header .history-count {
+      background: var(--purple); color: #fff; font-size: 11px;
+      font-weight: 700; padding: 2px 8px; border-radius: 99px;
+    }
+
+    .btn-close-history {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-size: 14px; font-weight: 700; padding: 8px 16px;
+      cursor: pointer; transition: border-color .15s;
+    }
+    .btn-close-history:hover { border-color: var(--red); color: var(--red); }
+
+    .history-toolbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    }
+    .history-search {
+      flex: 1; min-width: 180px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-size: 14px;
+      padding: 8px 12px; outline: none; transition: border-color .2s;
+    }
+    .history-search:focus { border-color: var(--purple); }
+    .history-search::placeholder { color: var(--muted); }
+
+    .btn-clear-history {
+      background: none; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--muted);
+      font-size: 13px; font-weight: 600; padding: 8px 14px;
+      cursor: pointer; transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .btn-clear-history:hover { color: var(--red); border-color: var(--red); }
+
+    .btn-export {
+      background: none; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px;
+      font-weight: 700; padding: 8px 14px; cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+      white-space: nowrap;
+    }
+    .btn-export.csv { color: var(--green); border-color: rgba(48,200,120,.3); }
+    .btn-export.csv:hover { background: rgba(48,200,120,.1); border-color: var(--green); }
+    .btn-export.pdf { color: var(--blue); border-color: rgba(64,144,240,.3); }
+    .btn-export.pdf:hover { background: rgba(64,144,240,.1); border-color: var(--blue); }
+
+    @media print {
+      body > *:not(#print-area) { display: none !important; }
+      #print-area { display: block !important; }
+    }
+    #print-area { display: none; }
+
+    .history-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+    .history-empty {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .history-empty .he-icon { font-size: 48px; margin-bottom: 12px; }
+    .history-empty p { font-size: 15px; }
+
+    /* ===== GRUPOS POR DÍA ===== */
+    .history-day-group { margin-bottom: 28px; }
+    .history-day-label {
+      font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700; margin-bottom: 10px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+
+    /* ===== FILA DE HISTORIAL ===== */
+    .history-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      margin-bottom: 8px; display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 10px 14px; align-items: center;
+      transition: border-color .2s;
+    }
+    .history-row:hover { border-color: var(--purple); }
+
+    .hr-icon { font-size: 24px; line-height: 1; }
+
+    .hr-info {}
+    .hr-client { font-size: 15px; font-weight: 700; color: var(--text); }
+    .hr-car    { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .hr-time {}
+    .hr-start { font-size: 13px; color: var(--text); font-weight: 600; font-family: var(--font-mono); }
+    .hr-end   { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
+
+    .hr-duration {
+      text-align: right;
+    }
+    .hr-mins { font-size: 20px; font-weight: 700; color: var(--purple); font-family: var(--font-mono); }
+    .hr-mins-label { font-size: 10px; color: var(--muted); letter-spacing: .06em; }
+
+    /* ===== STATS ===== */
+    .history-stats {
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 14px 20px; display: flex; gap: 20px; flex-wrap: wrap; flex-shrink: 0;
+    }
+    .stat-item { text-align: center; }
+    .stat-val  { font-size: 22px; font-weight: 700; color: var(--purple); font-family: var(--font-mono); }
+    .stat-lbl  { font-size: 10px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+    /* ===== TOAST ===== */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 20px;
+      font-size: 14px; color: var(--text); z-index: 400;
+      transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+      opacity: 0; pointer-events: none; white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    @media (min-width: 600px)  { #cars-container { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 960px)  { #cars-container { grid-template-columns: 1fr 1fr 1fr; } }
+    @media (max-width: 480px)  {
+      .history-row { grid-template-columns: auto 1fr auto; }
+      .hr-duration { grid-column: 3; grid-row: 1 / 3; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">🏎️</span>
+    <div>
+      <span class="logo-text">RC Pista</span>
+      <span class="logo-sub">Control de tiempo</span>
+    </div>
+  </div>
+  <div class="header-btns">
+    <button class="btn-header" id="btn-history">📋 Historial</button>
+    <button class="btn-header" id="btn-add-car">🚗 Añadir vehículo</button>
+  </div>
+</header>
+
+<!-- ===== ESTADO VACÍO ===== -->
+<div id="empty-state">
+  <div class="empty-icon">🏁</div>
+  <p>No hay carros registrados.<br>Pulsa <strong>+ Carro</strong> para agregar uno.</p>
+</div>
+
+<!-- ===== TARJETAS ===== -->
+<div id="cars-container"></div>
+
+<!-- ===== MODAL: RENOMBRAR ===== -->
+<div class="modal-overlay" id="modal-rename-overlay">
+  <div class="modal-box" id="modal-rename">
+    <h2>✏️ Renombrar vehículo</h2>
+    <div class="modal-sub">Escribe el nuevo nombre para el vehículo.</div>
+    <div class="modal-field">
+      <label>Nombre del vehículo</label>
+      <input class="modal-input" id="rename-input" type="text" maxlength="24" placeholder="Ej: Carro Rojo" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="rename-cancel">Cancelar</button>
+      <button class="modal-confirm" id="rename-confirm">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CLIENTE ===== -->
+<div class="modal-overlay" id="modal-client-overlay">
+  <div class="modal-box" id="modal-client-box">
+    <h2>👤 Datos de la renta</h2>
+    <div class="modal-sub" id="client-modal-sub">¿Quién va a usar el vehículo?</div>
+    <div class="modal-field">
+      <label>Nombre del cliente</label>
+      <input class="modal-input" id="client-name-input" type="text" maxlength="40" placeholder="Ej: Juan Pérez" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="client-cancel">Cancelar</button>
+      <button class="modal-confirm" id="client-confirm">▶ Iniciar renta</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL: HISTORIAL ===== -->
+<div id="history-panel">
+  <div class="history-header">
+    <h2>📋 Historial de rentas <span class="history-count" id="history-count">0</span></h2>
+    <button class="btn-close-history" id="btn-close-history">✕ Cerrar</button>
+  </div>
+  <div class="history-toolbar">
+    <input class="history-search" id="history-search" type="text" placeholder="🔍 Buscar por cliente o vehículo…" />
+    <button class="btn-export csv" id="btn-export-csv" title="Exportar a CSV (Excel)">📊 CSV</button>
+    <button class="btn-export pdf" id="btn-export-pdf" title="Imprimir / Guardar como PDF">🖨️ PDF</button>
+    <button class="btn-clear-history" id="btn-clear-history">🗑️ Borrar</button>
+  </div>
+  <div class="history-body" id="history-body"></div>
+  <div class="history-stats" id="history-stats"></div>
+</div>
+
+<!-- ===== ÁREA DE IMPRESIÓN ===== -->
+<div id="print-area"></div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   RC PISTA — Con historial de rentas y nombre de cliente
+============================================================ */
+
+/* ---- AUDIO ---- */
+let audioCtx = null;
+function playAlarm() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtx, now = ctx.currentTime;
+    [0, 0.35, 0.7].forEach((offset, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880 - i * 110, now + offset);
+      gain.gain.setValueAtTime(0.4, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.28);
+      osc.start(now + offset); osc.stop(now + offset + 0.3);
+    });
+  } catch(e) { console.warn('Audio no disponible:', e); }
+}
+
+/* ---- CONSTANTES ---- */
+const STORAGE_KEY     = 'rcpista_cars_v3';
+const HISTORY_KEY     = 'rcpista_history_v1';
+const TIME_OPTIONS    = [10, 15, 20, 30];
+
+/* ---- ESTADO GLOBAL ---- */
+let cars    = [];
+let nextId  = 1;
+let history = []; // Array de registros de renta completados/iniciados
+
+/* ---- ELEMENTOS DOM ---- */
+const carsContainer        = document.getElementById('cars-container');
+const emptyState           = document.getElementById('empty-state');
+const btnAddCar            = document.getElementById('btn-add-car');
+const toastEl              = document.getElementById('toast');
+
+// Modal renombrar
+const modalRenameOverlay   = document.getElementById('modal-rename-overlay');
+const renameInput          = document.getElementById('rename-input');
+const renameConfirm        = document.getElementById('rename-confirm');
+const renameCancel         = document.getElementById('rename-cancel');
+
+// Modal cliente
+const modalClientOverlay   = document.getElementById('modal-client-overlay');
+const clientNameInput      = document.getElementById('client-name-input');
+const clientConfirm        = document.getElementById('client-confirm');
+const clientCancel         = document.getElementById('client-cancel');
+const clientModalSub       = document.getElementById('client-modal-sub');
+
+// Historial
+const historyPanel         = document.getElementById('history-panel');
+const historyBody          = document.getElementById('history-body');
+const historyCount         = document.getElementById('history-count');
+const historyStats         = document.getElementById('history-stats');
+const historySearch        = document.getElementById('history-search');
+const btnHistory           = document.getElementById('btn-history');
+const btnCloseHistory      = document.getElementById('btn-close-history');
+const btnClearHistory      = document.getElementById('btn-clear-history');
+
+/* ============================================================
+   PERSISTENCIA
+============================================================ */
+function saveState() {
+  const toSave = cars.map(({ intervalId, photo, ...rest }) => rest);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ cars: toSave, nextId })); }
+  catch(e) { console.warn('Error guardando estado:', e); }
+}
+
+function savePhoto(id, dataUrl) {
+  const key = 'rcpista_photo_' + id;
+  try {
+    if (dataUrl) localStorage.setItem(key, dataUrl);
+    else         localStorage.removeItem(key);
+  } catch(e) { compressAndSavePhoto(id, dataUrl); }
+}
+
+function compressAndSavePhoto(id, dataUrl) {
+  const tmpImg = new Image();
+  tmpImg.onload = function() {
+    const canvas = document.createElement('canvas');
+    const MAX = 800; let w = tmpImg.width, h = tmpImg.height;
+    if (w > MAX || h > MAX) {
+      if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+      else       { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(tmpImg, 0, 0, w, h);
+    const compressed = canvas.toDataURL('image/jpeg', 0.75);
+    try {
+      localStorage.setItem('rcpista_photo_' + id, compressed);
+      const car = getCarById(id);
+      if (car) car.photo = compressed;
+      const imgEl = document.getElementById('photo-img-' + id);
+      if (imgEl) imgEl.src = compressed;
+    } catch(e2) { showToast('⚠️ Foto muy grande, elige una imagen más pequeña'); }
+  };
+  tmpImg.src = dataUrl;
+}
+
+function loadPhoto(id) { return localStorage.getItem('rcpista_photo_' + id) || null; }
+
+function saveHistory() {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
+  catch(e) { console.warn('Error guardando historial:', e); }
+}
+
+function loadHistory() {
+  const raw = localStorage.getItem(HISTORY_KEY);
+  if (!raw) return;
+  try { history = JSON.parse(raw); } catch(e) { history = []; }
+}
+
+function loadState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    if (data.nextId) nextId = data.nextId;
+    if (!data.cars)  return;
+    data.cars.forEach(car => {
+      if (car.state === 'running' && car.lastTick) {
+        const elapsed = Math.floor((Date.now() - car.lastTick) / 1000);
+        car.remaining = Math.max(0, car.remaining - elapsed);
+        if (car.remaining === 0) car.state = 'ended';
+      }
+      car.intervalId = null;
+      car.photo = loadPhoto(car.id);
+      cars.push(car);
+    });
+  } catch(e) { console.error('Error cargando estado:', e); }
+}
+
+/* ============================================================
+   GESTIÓN DE HISTORIAL
+============================================================ */
+
+/**
+ * Agrega una entrada al historial cuando se inicia una renta.
+ */
+function addHistoryEntry(car, clientName) {
+  const entry = {
+    id:         Date.now(),
+    carId:      car.id,
+    carName:    car.name,
+    clientName: clientName,
+    startTime:  Date.now(),
+    endTime:    null,
+    minutes:    car.selectedMin,
+    state:      'active' // active | completed | reset
+  };
+  history.unshift(entry);
+  saveHistory();
+  return entry;
+}
+
+/**
+ * Marca la renta activa de un carro como completada.
+ */
+function completeHistoryEntry(carId, endState) {
+  const entry = history.find(e => e.carId === carId && e.state === 'active');
+  if (entry) {
+    entry.endTime = Date.now();
+    entry.state   = endState || 'completed';
+    saveHistory();
+  }
+}
+
+/* ============================================================
+   GESTIÓN DE CARROS
+============================================================ */
+function createCar(name) {
+  return {
+    id:          nextId++,
+    name:        name,
+    photo:       null,
+    selectedMin: 10,
+    remaining:   10 * 60,
+    totalTime:   10 * 60,
+    state:       'idle',
+    intervalId:  null,
+    lastTick:    null,
+    clientName:  null,   // Nombre del cliente actual
+    rentStart:   null,   // Timestamp de inicio de renta
+  };
+}
+
+function initFixedCars() {
+  if (cars.length === 0) {
+    ['Carro 1', 'Carro 2', 'Carro 3'].forEach(name => {
+      cars.push(createCar(name));
+    });
+    saveState();
+  }
+}
+
+function triggerPhotoUpload(id) {
+  const input = document.getElementById('photo-input-' + id);
+  if (input) input.click();
+}
+
+function handlePhotoUpload(event, id) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const car = getCarById(id);
+  if (!car) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    car.photo = e.target.result;
+    savePhoto(id, car.photo);
+    const img = document.getElementById('photo-img-' + id);
+    const ph  = document.getElementById('photo-ph-' + id);
+    if (img) { img.src = car.photo; img.style.display = ''; }
+    if (ph)  { ph.style.display = 'none'; }
+    showToast('📷 Foto actualizada para ' + car.name);
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeCar(id) {
+  const car = getCarById(id);
+  if (!car) return;
+  stopInterval(car);
+  if (car.state === 'running' || car.state === 'paused') {
+    completeHistoryEntry(id, 'reset');
+  }
+  cars = cars.filter(c => c.id !== id);
+  const el = document.getElementById('car-' + id);
+  if (el) {
+    el.style.transition = 'opacity .3s, transform .3s';
+    el.style.opacity    = '0';
+    el.style.transform  = 'scale(.95)';
+    setTimeout(() => { el.remove(); updateEmptyState(); }, 300);
+  }
+  saveState();
+  showToast('🗑️ ' + car.name + ' eliminado');
+}
+
+async function renameCar(id) {
+  const car = getCarById(id);
+  if (!car) return;
+  const newName = await openRenameModal(car.name);
+  if (newName === null || newName.trim() === '') return;
+  car.name = newName.trim();
+  saveState();
+  const nameEl = document.querySelector('#car-' + id + ' .car-name');
+  if (nameEl) nameEl.textContent = car.name;
+  showToast('✏️ Renombrado a "' + car.name + '"');
+}
+
+/* ============================================================
+   CONTROL DEL TEMPORIZADOR
+============================================================ */
+
+/**
+ * Antes de iniciar, pedimos el nombre del cliente.
+ */
+async function startTimer(id) {
+  const car = getCarById(id);
+  if (!car || car.state === 'ended') return;
+
+  let clientName = null;
+
+  // Solo pedimos el nombre la primera vez (idle), no al reanudar
+  if (car.state === 'idle') {
+    clientName = await openClientModal(car.name, car.selectedMin);
+    if (clientName === null) return; // canceló
+
+    car.clientName = clientName.trim() || 'Sin nombre';
+    car.rentStart  = Date.now();
+
+    // Registrar en historial
+    addHistoryEntry(car, car.clientName);
+
+    car.remaining = car.selectedMin * 60;
+    car.totalTime  = car.remaining;
+  }
+
+  car.state    = 'running';
+  car.lastTick = Date.now();
+
+  stopInterval(car);
+
+  car.intervalId = setInterval(() => {
+    car.remaining--;
+    car.lastTick = Date.now();
+
+    if (car.remaining <= 0) {
+      car.remaining = 0;
+      car.state     = 'ended';
+      stopInterval(car);
+      completeHistoryEntry(car.id, 'completed');
+      playAlarm();
+      showToast('⏰ ¡Tiempo agotado! — ' + car.name + ' (' + (car.clientName || '') + ')');
+    }
+
+    updateCardUI(car);
+    saveState();
+  }, 1000);
+
+  updateCardUI(car);
+  saveState();
+}
+
+function pauseTimer(id) {
+  const car = getCarById(id);
+  if (!car || car.state !== 'running') return;
+  car.state = 'paused';
+  stopInterval(car);
+  updateCardUI(car);
+  saveState();
+}
+
+function addExtraTime(id) {
+  const car = getCarById(id);
+  if (!car) return;
+  car.remaining += 5 * 60;
+  car.totalTime  = Math.max(car.totalTime, car.remaining);
+  if (car.state === 'ended') car.state = 'paused';
+  updateCardUI(car);
+  saveState();
+  showToast('➕ +5 min para ' + car.name);
+}
+
+function resetTimer(id) {
+  const car = getCarById(id);
+  if (!car) return;
+  stopInterval(car);
+  if (car.state === 'running' || car.state === 'paused') {
+    completeHistoryEntry(id, 'reset');
+  }
+  car.state      = 'idle';
+  car.remaining  = car.selectedMin * 60;
+  car.totalTime  = car.remaining;
+  car.lastTick   = null;
+  car.clientName = null;
+  car.rentStart  = null;
+  updateCardUI(car);
+  saveState();
+}
+
+function selectTime(id, minutes) {
+  const car = getCarById(id);
+  if (!car || car.state !== 'idle') return;
+  car.selectedMin = minutes;
+  car.remaining   = minutes * 60;
+  car.totalTime   = car.remaining;
+  updateCardUI(car);
+  saveState();
+}
+
+/* ============================================================
+   RENDERIZADO
+============================================================ */
+function renderCar(car) {
+  const card = document.createElement('div');
+  card.className = 'car-card state-' + car.state;
+  card.id        = 'car-' + car.id;
+
+  card.innerHTML = `
+    <div class="car-photo-wrap" onclick="triggerPhotoUpload(${car.id})" title="Clic para cambiar foto">
+      <img id="photo-img-${car.id}" src="${car.photo || ''}" alt="Foto"
+           style="${car.photo ? '' : 'display:none'}">
+      <div class="car-photo-placeholder" id="photo-ph-${car.id}" style="${car.photo ? 'display:none' : ''}">
+        <span class="ph-icon">📷</span>
+        <span>Subir foto del carro</span>
+      </div>
+      <div class="car-photo-overlay">📷 Cambiar foto</div>
+    </div>
+    <input type="file" accept="image/*" class="car-photo-input" id="photo-input-${car.id}"
+           onchange="handlePhotoUpload(event, ${car.id})">
+
+    <div class="card-header">
+      <div class="car-name-wrap">
+        <span class="car-name">${escHtml(car.name)}</span>
+        <button class="btn-rename" title="Renombrar" onclick="renameCar(${car.id})">✏️</button>
+      </div>
+      <span class="status-badge" id="badge-${car.id}">${stateLabel(car.state)}</span>
+      <button class="btn-remove" title="Eliminar" onclick="removeCar(${car.id})">✕</button>
+    </div>
+
+    <!-- Info de cliente activo -->
+    <div class="card-client-info" id="client-info-${car.id}">
+      <span>👤</span>
+      <span class="client-name" id="client-name-${car.id}"></span>
+      <span class="client-start" id="client-start-${car.id}"></span>
+    </div>
+
+    <!-- Selector de tiempo -->
+    <div class="time-selector" id="time-sel-${car.id}">
+      <label>Tiempo de carrera</label>
+      ${TIME_OPTIONS.map(m => `
+        <button class="time-opt ${m === car.selectedMin ? 'selected' : ''}"
+                onclick="selectTime(${car.id}, ${m})"
+                id="topt-${car.id}-${m}">
+          ${m} min
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="timer-display">
+      <div class="timer-digits" id="digits-${car.id}">${formatTime(car.remaining)}</div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="prog-${car.id}" style="width:${progressPct(car)}%"></div>
+    </div>
+
+    <div class="card-controls">
+      <button class="btn-ctrl btn-start" id="btn-start-${car.id}" onclick="startTimer(${car.id})">▶ Iniciar</button>
+      <button class="btn-ctrl btn-pause" id="btn-pause-${car.id}" onclick="pauseTimer(${car.id})">⏸ Pausar</button>
+      <button class="btn-ctrl btn-extra" id="btn-extra-${car.id}" onclick="addExtraTime(${car.id})">＋5 min</button>
+      <button class="btn-ctrl btn-reset" id="btn-reset-${car.id}" onclick="resetTimer(${car.id})">↺ Reiniciar</button>
+    </div>
+  `;
+
+  carsContainer.appendChild(card);
+  updateCardUI(car);
+
+  card.style.opacity   = '0';
+  card.style.transform = 'translateY(16px)';
+  requestAnimationFrame(() => {
+    card.style.transition = 'opacity .3s, transform .3s';
+    card.style.opacity    = '1';
+    card.style.transform  = 'translateY(0)';
+  });
+}
+
+function updateCardUI(car) {
+  const card = document.getElementById('car-' + car.id);
+  if (!card) return;
+
+  card.className = 'car-card state-' + car.state;
+  if (car.remaining <= 60 && car.remaining > 0 && (car.state === 'running' || car.state === 'paused')) {
+    card.classList.add('last-minute');
+  }
+
+  const digits = document.getElementById('digits-' + car.id);
+  if (digits) digits.textContent = formatTime(car.remaining);
+
+  const badge = document.getElementById('badge-' + car.id);
+  if (badge) badge.textContent = stateLabel(car.state);
+
+  const prog = document.getElementById('prog-' + car.id);
+  if (prog) prog.style.width = progressPct(car) + '%';
+
+  const timeSel = document.getElementById('time-sel-' + car.id);
+  if (timeSel) timeSel.style.display = (car.state === 'idle') ? '' : 'none';
+
+  TIME_OPTIONS.forEach(m => {
+    const btn = document.getElementById(`topt-${car.id}-${m}`);
+    if (btn) btn.className = 'time-opt' + (m === car.selectedMin ? ' selected' : '');
+  });
+
+  // Botones
+  const btnStart = document.getElementById('btn-start-' + car.id);
+  const btnPause = document.getElementById('btn-pause-' + car.id);
+  const btnExtra = document.getElementById('btn-extra-' + car.id);
+  const btnReset = document.getElementById('btn-reset-' + car.id);
+
+  if (btnStart) {
+    btnStart.disabled    = (car.state === 'running' || car.state === 'ended');
+    btnStart.textContent = (car.state === 'paused') ? '▶ Reanudar' : '▶ Iniciar';
+  }
+  if (btnPause) btnPause.disabled = (car.state !== 'running');
+  if (btnExtra) btnExtra.disabled = false;
+  if (btnReset) btnReset.disabled = (car.state === 'idle');
+
+  // Info de cliente
+  const clientInfo  = document.getElementById('client-info-' + car.id);
+  const clientNameEl = document.getElementById('client-name-' + car.id);
+  const clientStartEl = document.getElementById('client-start-' + car.id);
+
+  if (clientInfo) {
+    const showClient = car.clientName && car.state !== 'idle';
+    clientInfo.classList.toggle('visible', !!showClient);
+    if (showClient) {
+      if (clientNameEl)  clientNameEl.textContent  = car.clientName;
+      if (clientStartEl) clientStartEl.textContent = car.rentStart ? '· Inició ' + formatClock(car.rentStart) : '';
+    }
+  }
+}
+
+/* ============================================================
+   PANEL DE HISTORIAL
+============================================================ */
+function openHistoryPanel() {
+  historyPanel.classList.add('open');
+  renderHistory(historySearch.value);
+}
+
+function closeHistoryPanel() {
+  historyPanel.classList.remove('open');
+}
+
+function renderHistory(filter) {
+  filter = (filter || '').toLowerCase().trim();
+
+  let rows = history;
+  if (filter) {
+    rows = rows.filter(e =>
+      e.clientName.toLowerCase().includes(filter) ||
+      e.carName.toLowerCase().includes(filter)
+    );
+  }
+
+  historyCount.textContent = history.length;
+
+  if (rows.length === 0) {
+    historyBody.innerHTML = `
+      <div class="history-empty">
+        <div class="he-icon">${filter ? '🔍' : '📋'}</div>
+        <p>${filter ? 'No se encontraron registros para "' + escHtml(filter) + '".' : 'Aún no hay rentas registradas.<br>Cuando inicies un vehículo, aparecerán aquí.'}</p>
+      </div>`;
+    renderStats(rows);
+    return;
+  }
+
+  // Agrupar por día
+  const groups = {};
+  rows.forEach(entry => {
+    const day = new Date(entry.startTime).toLocaleDateString('es-MX', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    if (!groups[day]) groups[day] = [];
+    groups[day].push(entry);
+  });
+
+  let html = '';
+  Object.entries(groups).forEach(([day, entries]) => {
+    html += `<div class="history-day-group">
+      <div class="history-day-label">📅 ${escHtml(day)}</div>`;
+    entries.forEach(e => {
+      const icon      = e.state === 'completed' ? '✅' : e.state === 'reset' ? '↺' : '🟢';
+      const endStr    = e.endTime ? formatDateTime(e.endTime) : '—';
+      const durMin    = e.endTime ? Math.round((e.endTime - e.startTime) / 60000) : e.minutes;
+
+      html += `
+        <div class="history-row">
+          <div class="hr-icon">${icon}</div>
+          <div class="hr-info">
+            <div class="hr-client">👤 ${escHtml(e.clientName)}</div>
+            <div class="hr-car">🚗 ${escHtml(e.carName)}</div>
+          </div>
+          <div class="hr-time">
+            <div class="hr-start">▶ ${formatDateTime(e.startTime)}</div>
+            <div class="hr-end">⏹ ${endStr}</div>
+          </div>
+          <div class="hr-duration">
+            <div class="hr-mins">${durMin}</div>
+            <div class="hr-mins-label">min</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  });
+
+  historyBody.innerHTML = html;
+  renderStats(rows);
+}
+
+function renderStats(rows) {
+  const total     = rows.length;
+  const completed = rows.filter(e => e.state === 'completed').length;
+  const totalMin  = rows.reduce((s, e) => {
+    if (e.endTime) return s + Math.round((e.endTime - e.startTime) / 60000);
+    return s + e.minutes;
+  }, 0);
+  const uniqueClients = new Set(rows.map(e => e.clientName.toLowerCase())).size;
+
+  historyStats.innerHTML = `
+    <div class="stat-item"><div class="stat-val">${total}</div><div class="stat-lbl">Rentas</div></div>
+    <div class="stat-item"><div class="stat-val">${completed}</div><div class="stat-lbl">Completadas</div></div>
+    <div class="stat-item"><div class="stat-val">${totalMin}</div><div class="stat-lbl">Min totales</div></div>
+    <div class="stat-item"><div class="stat-val">${uniqueClients}</div><div class="stat-lbl">Clientes únicos</div></div>
+  `;
+}
+
+/* ============================================================
+   MODALES — PROMESAS
+============================================================ */
+let renameResolve = null;
+
+function openRenameModal(currentName) {
+  return new Promise(resolve => {
+    renameInput.value = currentName || '';
+    modalRenameOverlay.classList.add('open');
+    renameInput.focus();
+    renameInput.select();
+    renameResolve = resolve;
+  });
+}
+
+function confirmRename() {
+  const val = renameInput.value.trim();
+  modalRenameOverlay.classList.remove('open');
+  if (renameResolve) renameResolve(val || null);
+  renameResolve = null;
+}
+
+function cancelRename() {
+  modalRenameOverlay.classList.remove('open');
+  if (renameResolve) renameResolve(null);
+  renameResolve = null;
+}
+
+renameInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter')  confirmRename();
+  if (e.key === 'Escape') cancelRename();
+});
+renameConfirm.addEventListener('click', confirmRename);
+renameCancel.addEventListener('click',  cancelRename);
+modalRenameOverlay.addEventListener('click', e => { if (e.target === modalRenameOverlay) cancelRename(); });
+
+/* ---- Modal cliente ---- */
+let clientResolve = null;
+
+function openClientModal(carName, minutes) {
+  return new Promise(resolve => {
+    clientModalSub.textContent = `Vehículo: ${carName} · ${minutes} minutos`;
+    clientNameInput.value = '';
+    modalClientOverlay.classList.add('open');
+    clientNameInput.focus();
+    clientResolve = resolve;
+  });
+}
+
+function confirmClient() {
+  const val = clientNameInput.value.trim();
+  modalClientOverlay.classList.remove('open');
+  if (clientResolve) clientResolve(val || 'Sin nombre');
+  clientResolve = null;
+}
+
+function cancelClient() {
+  modalClientOverlay.classList.remove('open');
+  if (clientResolve) clientResolve(null);
+  clientResolve = null;
+}
+
+clientNameInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter')  confirmClient();
+  if (e.key === 'Escape') cancelClient();
+});
+clientConfirm.addEventListener('click', confirmClient);
+clientCancel.addEventListener('click',  cancelClient);
+modalClientOverlay.addEventListener('click', e => { if (e.target === modalClientOverlay) cancelClient(); });
+
+/* ============================================================
+   EVENTOS DE HISTORIAL
+============================================================ */
+btnHistory.addEventListener('click', openHistoryPanel);
+btnCloseHistory.addEventListener('click', closeHistoryPanel);
+historySearch.addEventListener('input', () => renderHistory(historySearch.value));
+
+document.getElementById('btn-export-csv').addEventListener('click', () => {
+  const filter = historySearch.value.toLowerCase().trim();
+  const rows = filter
+    ? history.filter(e => e.clientName.toLowerCase().includes(filter) || e.carName.toLowerCase().includes(filter))
+    : history;
+  exportCSV(rows);
+});
+
+document.getElementById('btn-export-pdf').addEventListener('click', () => {
+  const filter = historySearch.value.toLowerCase().trim();
+  const rows = filter
+    ? history.filter(e => e.clientName.toLowerCase().includes(filter) || e.carName.toLowerCase().includes(filter))
+    : history;
+  exportPDF(rows);
+});
+
+btnClearHistory.addEventListener('click', () => {
+  if (!confirm('¿Seguro que deseas borrar todo el historial de rentas? Esta acción no se puede deshacer.')) return;
+  history = [];
+  saveHistory();
+  renderHistory('');
+  showToast('🗑️ Historial borrado');
+});
+
+/* ============================================================
+   UTILIDADES
+============================================================ */
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60), s = seconds % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function formatClock(ts) {
+  return new Date(ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    + ' ' + d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateISO(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+/* ============================================================
+   EXPORTAR CSV
+============================================================ */
+function exportCSV(rows) {
+  if (!rows || rows.length === 0) { showToast('⚠️ No hay datos para exportar'); return; }
+
+  const headers = ['Cliente','Vehículo','Fecha','Hora inicio','Hora fin','Duración (min)','Estado'];
+  const lines   = [headers.join(',')];
+
+  rows.forEach(e => {
+    const startDt = new Date(e.startTime);
+    const fecha   = startDt.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit', year:'numeric' });
+    const hIni    = startDt.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+    const hFin    = e.endTime ? new Date(e.endTime).toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' }) : '';
+    const durMin  = e.endTime ? Math.round((e.endTime - e.startTime) / 60000) : e.minutes;
+    const estado  = e.state === 'completed' ? 'Completada' : e.state === 'reset' ? 'Reiniciada' : 'Activa';
+    const row     = [e.clientName, e.carName, fecha, hIni, hFin, durMin, estado]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`);
+    lines.push(row.join(','));
+  });
+
+  const bom   = '\uFEFF';
+  const data  = bom + lines.join('\r\n');
+  const b64   = btoa(unescape(encodeURIComponent(data)));
+  const a     = document.createElement('a');
+  const fecha = formatDateISO(Date.now());
+  a.href      = 'data:text/csv;charset=utf-8;base64,' + b64;
+  a.download  = `rcpista_historial_${fecha}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('📊 CSV descargado correctamente');
+}
+
+/* ============================================================
+   EXPORTAR PDF (jsPDF real — descarga directa)
+============================================================ */
+function exportPDF(rows) {
+  if (!rows || rows.length === 0) { showToast('⚠️ No hay datos para exportar'); return; }
+
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast('⚠️ Librería PDF no cargada, intenta de nuevo'); return; }
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // ── Encabezado ──
+  doc.setFillColor(240, 192, 64);
+  doc.rect(0, 0, pageW, 22, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(20, 20, 20);
+  doc.text('RC Pista — Historial de Rentas', 14, 14);
+
+  const fechaExp = new Date().toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit', year:'numeric' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+  doc.text('Exportado el ' + fechaExp, pageW - 14, 14, { align: 'right' });
+
+  // ── Filas de tabla ──
+  const tableBody = rows.map(e => {
+    const startDt = new Date(e.startTime);
+    const fecha   = startDt.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit', year:'numeric' });
+    const hIni    = startDt.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+    const hFin    = e.endTime ? new Date(e.endTime).toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' }) : '—';
+    const durMin  = e.endTime ? Math.round((e.endTime - e.startTime) / 60000) : e.minutes;
+    const estado  = e.state === 'completed' ? 'Completada' : e.state === 'reset' ? 'Reiniciada' : 'Activa';
+    return [e.clientName, e.carName, fecha, hIni, hFin, String(durMin) + ' min', estado];
+  });
+
+  const totalMin = rows.reduce((s,e) => s + (e.endTime ? Math.round((e.endTime - e.startTime)/60000) : e.minutes), 0);
+
+  // ── autoTable ──
+  doc.autoTable({
+    startY: 26,
+    margin: { left: 10, right: 10, top: 26, bottom: 12 },
+    head: [['Cliente', 'Vehículo', 'Fecha', 'Inicio', 'Fin', 'Duración', 'Estado']],
+    body: tableBody,
+    theme: 'striped',
+    styles: {
+      font: 'helvetica',
+      fontSize: 8,
+      cellPadding: 2,
+      overflow: 'linebreak',
+      minCellWidth: 15,
+    },
+    headStyles: {
+      fillColor: [30, 34, 48],
+      textColor: [240, 192, 64],
+      fontStyle: 'bold',
+      fontSize: 8,
+    },
+    alternateRowStyles: { fillColor: [245, 246, 250] },
+    columnStyles: {
+      5: { halign: 'center' },
+    },
+    didDrawPage: (data) => {
+      // Pie de página en cada hoja
+      const pN = doc.internal.getCurrentPageInfo().pageNumber;
+      const pT = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('RC Pista · Control de tiempo para carros RC', 14, doc.internal.pageSize.getHeight() - 6);
+      doc.text(`Pág. ${pN} / ${pT}`, pageW - 14, doc.internal.pageSize.getHeight() - 6, { align: 'right' });
+    }
+  });
+
+  // ── Resumen al final ──
+  const finalY = doc.lastAutoTable.finalY + 6;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 34, 48);
+  doc.text(
+    `Total: ${rows.length} rentas · ${totalMin} minutos rentados · ${new Set(rows.map(e=>e.clientName.toLowerCase())).size} clientes únicos`,
+    14, finalY
+  );
+
+  // ── Abrir PDF en nueva pestaña (compatible con CSP del entorno) ──
+  const dataUri = doc.output('datauristring');
+  const w = window.open('', '_blank');
+  if (w) {
+    w.document.write(`<!DOCTYPE html>
+      <html><head><title>RC Pista — Historial</title>
+      <style>
+        body { margin:0; background:#1a1a1a; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; min-height:100vh; font-family:sans-serif; padding:20px; gap:14px; }
+        p { color:#ccc; font-size:14px; margin:0; }
+        .hint { background:#2a2a2a; border:1px solid #444; border-radius:8px; padding:12px 18px; color:#f0c040; font-size:13px; text-align:center; }
+        iframe { width:100%; max-width:960px; height:85vh; border:none; border-radius:8px; }
+      </style></head>
+      <body>
+        <div class="hint">📄 Para guardar: clic derecho sobre el PDF → <strong>Guardar como…</strong> &nbsp;|&nbsp; o usa el botón de descarga (⬇) del visor</div>
+        <iframe src="${dataUri}"></iframe>
+      </body></html>`);
+    w.document.close();
+    showToast('📄 PDF abierto en nueva pestaña');
+  } else {
+    showToast('⚠️ Permite ventanas emergentes e intenta de nuevo');
+  }
+}
+
+function progressPct(car) {
+  if (car.totalTime === 0) return 0;
+  return Math.round((car.remaining / car.totalTime) * 100);
+}
+
+function stateLabel(state) {
+  return { idle: 'En espera', running: 'En curso', paused: 'Pausado', ended: '¡Tiempo!' }[state] || state;
+}
+
+function getCarById(id)   { return cars.find(c => c.id === id); }
+
+function stopInterval(car) {
+  if (car.intervalId !== null) { clearInterval(car.intervalId); car.intervalId = null; }
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+}
+
+function updateEmptyState() { emptyState.style.display = 'none'; }
+
+/* ============================================================
+   INICIALIZACIÓN
+============================================================ */
+function init() {
+  loadState();
+  loadHistory();
+  initFixedCars();
+  cars.forEach(car => renderCar(car));
+  cars.forEach(car => { if (car.state === 'running') startTimer(car.id); });
+  updateEmptyState();
+}
+
+btnAddCar.addEventListener('click', async () => {
+  const name = await openRenameModal('Carro ' + nextId);
+  if (name === null) return;
+  const car = createCar(name.trim() || 'Carro ' + (nextId - 1));
+  cars.push(car);
+  renderCar(car);
+  saveState();
+  showToast('🚗 ' + car.name + ' añadido');
+});
+
+init();
+</script>
+</body>
+</html>
